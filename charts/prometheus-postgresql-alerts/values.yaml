@@ -1,0 +1,100 @@
+global:
+  additionalRuleLabels: {}
+
+format: PrometheusRuleCRD
+
+defaultKeepFiringFor: ""
+defaultRunbookUrl: https://qonto.github.io/database-monitoring-framework/{{chartVersion}}/runbooks/postgresql/{{alertName}}
+
+rulesGroupName: postgresql.rules
+
+rules:
+
+  SQLExporterDown:
+    expr: absent(up{service="sql-exporter", target=""}) or up{service="sql-exporter", target=""} <1
+    for: 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Exporter is down"
+      description: "SQL Exporter is down"
+
+  SQLExporterMissingTarget:
+    expr: min(up{service="sql-exporter", target!=""}) by (target,exported_job) < 1
+    for : 5m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Exporter scrape for {{ $labels.target }} ({{ $labels.exported_job }}) failed"
+      description: "SQL Exporter cannot collect metrics for this target, it's either because the target is down, or the sql-exporter user cannot connect."
+
+  SQLExporterScrapingLimit:
+    expr: avg_over_time(scrape_duration_seconds{job="sql-exporter", target=""}[10m]) > 30
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Exporter scraping takes long time"
+      description: "SQL Exporter scraping is taking a long time"
+
+  PostgreSQLMaxConnections:
+    expr: |
+      max by (target) (pg_stat_connections_count)
+      * 100
+      / max by (target) (pg_settings_max_connections)
+      > 80
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "{{ $labels.target }} is close from the maximum database connections"
+      description: '{{ $labels.target }} uses >80% of the maximum database connections'
+
+  PostgreSQLReplicationSlotStorageLimit:
+    expr: max by (target, slot_name) (pg_replication_slots_available_storage_percent{}) < 20
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "{{ $labels.slot_name }} on {{ $labels.target }} is close to its storage limit"
+      description: '{{ $labels.slot_name }} has {{ printf "%.2g" $value }}% free disk storage space'
+
+  PostgreSQLInactiveLogicalReplicationSlot:
+    expr: max by (target, slot_name) (pg_replication_slots_active{slot_type="logical"}) < 1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Logical replication slot is inactive"
+      description: "{{ $labels.slot_name }} on {{ $labels.target }} is inactive"
+
+  PostgreSQLInactivePhysicalReplicationSlot:
+    expr: max by (target, slot_name) (pg_replication_slots_active{slot_type="physical"}) < 1
+    for: 10m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Physical replication slot is inactive"
+      description: "{{ $labels.slot_name }} on {{ $labels.target }} is inactive"
+
+  PostgreSQLLongRunningQueries:
+    expr: max by (target, datname, usename) (pg_active_backend_duration_minutes{usename!=""}) > 30
+    for: 1m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Long running queries on {{ $labels.datname }} of {{ $labels.target }} initiated by {{ $labels.usename }}"
+      description: "{{ $labels.usename }} is running long queries on {{ $labels.datname }} of {{ $labels.target }}"
+    pintComments:
+      - disable promql/series
+
+  PostgreSQLInvalidIndex:
+    expr: max by (target, datname, relname, indexrelname) (pg_stat_user_indexes_invalid_index_count) >= 0
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "{{ $labels.indexrelname }} is invalid"
+      description: "{{ $labels.indexrelname }} of {{ $labels.relname }} table on {{ $labels.datname }} database on {{ $labels.target }} is invalid"
+    pintComments:
+      - disable promql/series

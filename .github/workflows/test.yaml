@@ -1,0 +1,87 @@
+name: test
+on:
+  push:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+jobs:
+
+  sql:
+    name: sql
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres
+        env:
+          POSTGRES_PASSWORD: hackme
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: run SQL tests
+        run: make sql-test
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: hackme
+          PGDATABASE: test
+
+  helm:
+    name: helm
+    runs-on: ubuntu-latest
+    env:
+      HELM_UNITTEST_VERSION: v0.4.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install helm-unittest
+        run: helm plugin install --version $HELM_UNITTEST_VERSION https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Run Helm test
+        run: make helm-test
+
+      - name: Check all alerts have runbooks
+        run: make runbook-test
+
+  kubeconform:
+    name: kubeconform
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFORM_VERSION: 0.6.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSLo /tmp/kubeconform.tar.gz "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+          && tar -C /usr/local/bin/ -xzvf /tmp/kubeconform.tar.gz
+
+      - name: Run Kubeconform test
+        run: make kubeconform-test
+
+  prometheus-rules:
+    name: prometheus-rules
+    runs-on: ubuntu-latest
+    env:
+      PROMETHEUS_VERSION: 2.48.0
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Promtool (Prometheus)
+        run: |
+          curl -sSLo /tmp/prometheus.tar.gz "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
+          && tar -C /tmp -xzvf /tmp/prometheus.tar.gz \
+          && cp /tmp/prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool /usr/local/bin/promtool
+
+      - name: Prometheus test
+        run: make prometheus-test

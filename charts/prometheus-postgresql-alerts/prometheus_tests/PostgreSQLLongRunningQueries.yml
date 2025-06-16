@@ -1,0 +1,25 @@
+rule_files:
+    - rules.yml
+
+evaluation_interval: 1m
+
+tests:
+
+    - name: PostgreSQLLongRunningQueries
+      interval: 1m
+      input_series:
+          - series: 'pg_active_backend_duration_minutes{target="db1",datname="unittest",usename="test",pid="1234"}'
+            values: 40+1x10
+      alert_rule_test:
+          - alertname: PostgreSQLLongRunningQueries
+            eval_time: 1m
+            exp_alerts:
+                - exp_labels:
+                      target: db1
+                      datname: unittest
+                      usename: test
+                      severity: warning
+                  exp_annotations:
+                      summary: "Long running queries on unittest of db1 initiated by test"
+                      description: "test is running long queries on unittest of db1"
+                      runbook_url: "https://qonto.github.io/database-monitoring-framework/0.0.0/runbooks/postgresql/PostgreSQLLongRunningQueries"
